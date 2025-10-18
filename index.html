@@ -1,18 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Framistan Admin - Create Campaign</title>
-  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Framistan — Admin Page</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
   <style>
-    body{background:#0f172a;color:#e6eef8;font-family:Inter,sans-serif;padding:30px;}
-    .container{max-width:600px;margin:0 auto;background:#0b1220;padding:20px;border-radius:12px;}
-    input, button{width:100%;padding:10px;margin-top:10px;border-radius:8px;border:none;}
-    input[type=file]{padding:5px;}
-    button{background:#06b6d4;color:#012;font-weight:bold;cursor:pointer;}
-    .link-box{margin-top:20px;display:none;}
-    .muted{color:#94a3b8;font-size:13px;}
+    :root{--bg:#0f172a;--card:#0b1220;--accent:#06b6d4;--muted:#94a3b8;--glass:rgba(255,255,255,0.04);--radius:12px;--shadow:0 6px 18px rgba(2,6,23,0.6);}
+    *{box-sizing:border-box;}
+    body{margin:0;font-family:Inter, sans-serif; background:var(--bg); color:#e6eef8; min-height:100vh; padding:32px; display:flex; justify-content:center;}
+    .container{width:100%; max-width:600px;}
+    h1{margin-bottom:10px;}
+    input, button{width:100%; padding:10px 12px; border-radius:10px; border:none; margin-top:10px;}
+    button{background:var(--accent); color:#012; font-weight:600; cursor:pointer;}
+    input[readonly]{background:var(--glass);}
+    .muted{color:var(--muted); font-size:13px;}
+    .link-box{display:none; margin-top:18px;}
   </style>
 </head>
 <body>
@@ -25,7 +28,7 @@
     <button id="createBtn">Create Campaign</button>
 
     <div class="link-box" id="linkBox">
-      <label>Campaign Link:</label>
+      <label class="muted">Campaign Link:</label>
       <input type="text" id="campaignLink" readonly>
       <button id="copyLinkBtn">Copy Link</button>
     </div>
@@ -49,9 +52,9 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
+    const campaignNameInput = document.getElementById('campaignName');
     const frameFile = document.getElementById('frameFile');
     const createBtn = document.getElementById('createBtn');
-    const campaignNameInput = document.getElementById('campaignName');
     const linkBox = document.getElementById('linkBox');
     const campaignLink = document.getElementById('campaignLink');
     const copyLinkBtn = document.getElementById('copyLinkBtn');
@@ -63,25 +66,30 @@
       const file = frameFile.files[0];
       if(!file) return;
       const reader = new FileReader();
-      reader.onload = () => frameBase64 = reader.result;
+      reader.onload = ()=> frameBase64 = reader.result;
       reader.readAsDataURL(file);
     });
 
     // Convert name to URL-friendly slug
-    function slugify(text){return text.toString().toLowerCase().trim().replace(/\s+/g,'-').replace(/[^\w\-]+/g,'').replace(/\-\-+/g,'-');}
+    function slugify(text){
+      return text.toString().toLowerCase().trim()
+        .replace(/\s+/g,'-')
+        .replace(/[^\w\-]+/g,'')
+        .replace(/\-\-+/g,'-');
+    }
 
     createBtn.addEventListener('click', ()=>{
       const name = campaignNameInput.value.trim();
-      if(!name) { alert('Enter campaign name'); return;}
-      if(!frameBase64) { alert('Upload PNG frame'); return; }
+      if(!name){ alert('Enter campaign name'); return; }
+      if(!frameBase64){ alert('Upload PNG frame'); return; }
 
-      const id = slugify(name); // Use slug as ID
+      const id = slugify(name); // use campaign-name slug as ID
 
       set(ref(db,'campaigns/'+id), { name, frame: frameBase64 })
         .then(()=>{
           const link = `${window.location.origin}/campaign.html?id=${id}`;
           campaignLink.value = link;
-          linkBox.style.display = 'block';
+          linkBox.style.display='block';
         })
         .catch(err=>alert('Error saving campaign: '+err));
     });

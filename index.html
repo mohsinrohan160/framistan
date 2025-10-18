@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Framistan — Create Campaign</title>
+  <style>
+    :root{
+      --bg:#0f172a; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --glass: rgba(255,255,255,0.04);
+      --radius:12px; --shadow: 0 6px 18px rgba(2,6,23,0.6);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+      background: linear-gradient(180deg, #071126 0%, #071126 60%, #071126 100%); color:#e6eef8; min-height:100vh; padding:32px;
+      display:flex; align-items:flex-start; justify-content:center;
+    }
+    .container{width:100%; max-width:1000px;}
+    header{display:flex; justify-content:space-between; align-items:center; margin-bottom:18px}
+    header h1{font-size:20px; margin:0}
+    header p{margin:0; color:var(--muted); font-size:13px}
+
+    .grid{display:grid; grid-template-columns: 1fr 420px; gap:20px}
+
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow)}
+    label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px}
+    input[type=text], input[type=file], select{width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.04); background:var(--glass); color:inherit}
+    .muted{color:var(--muted); font-size:13px}
+    button{background:var(--accent); color:#012; border:none; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600}
+    .preview{background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02)); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; align-items:center;}
+    .frame-preview{width:360px; height:360px; border-radius:8px; background:#0b1220; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden}
+    .frame-preview img{max-width:100%; max-height:100%; object-fit:contain}
+    .hint{font-size:13px; color:var(--muted)}
+
+    @media (max-width:880px){
+      .grid{grid-template-columns: 1fr;}
+      .frame-preview{width:100%; height:320px}
+    }
+
+    .small{font-size:12px; color:var(--muted)}
+    .row{display:flex; gap:8px}
+
+    footer{margin-top:14px; color:var(--muted); font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Framistan — Create Campaign</h1>
+        <p class="muted">No login — create a campaign, upload a PNG frame and share the campaign link.</p>
+      </div>
+      <div class="small">Prototype v2 by Mohsin</div>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <h2 style="margin-top:0">Create a new Campaign</h2>
+        <p class="muted">Visitors will be able to open this campaign, upload their photo and download the merged image.</p>
+
+        <form id="createCampaignForm" autocomplete="off">
+          <div style="margin-top:12px">
+            <label for="campaignName">Campaign name</label>
+            <input id="campaignName" type="text" placeholder="e.g. Support Local School" required />
+          </div>
+
+          <div style="margin-top:12px">
+            <label for="frameFile">Upload frame (PNG with transparent areas)</label>
+            <input id="frameFile" type="file" accept="image/png" />
+            <p class="hint">PNG should ideally be square and same size as final output (e.g. 1080×1080)</p>
+          </div>
+
+          <div style="margin-top:12px; display:flex; gap:8px; align-items:center">
+            <button type="button" id="createBtn">Create Campaign</button>
+            <div class="muted">(Generates sharable link)</div>
+          </div>
+        </form>
+
+        <div id="campaignLinkBox" style="display:none; margin-top:18px">
+          <label class="small">Your Campaign Link:</label>
+          <input id="campaignLink" type="text" readonly style="width:100%;" />
+          <button id="copyLink" style="margin-top:6px">Copy Link</button>
+        </div>
+      </section>
+
+      <aside class="card preview">
+        <div style="width:100%">
+          <label class="small">Frame preview</label>
+          <div class="frame-preview" id="framePreview">
+            <div class="muted small">No frame uploaded yet</div>
+          </div>
+        </div>
+
+        <div style="width:100%; display:flex; gap:8px; justify-content:space-between; align-items:center; margin-top:6px">
+          <div class="small muted">Preview is client-side only</div>
+          <div class="row">
+            <button id="downloadDemo" type="button">Download Demo</button>
+          </div>
+        </div>
+
+        <footer>
+          Tip: Use a transparent PNG frame where the user photo should show.
+        </footer>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const frameFile = document.getElementById('frameFile');
+    const framePreview = document.getElementById('framePreview');
+    const createBtn = document.getElementById('createBtn');
+    const campaignLinkBox = document.getElementById('campaignLinkBox');
+    const campaignLinkInput = document.getElementById('campaignLink');
+    const copyLinkBtn = document.getElementById('copyLink');
+
+    let frameBase64 = '';
+
+    // Preview uploaded frame
+    frameFile.addEventListener('change', ()=>{
+      const f = frameFile.files && frameFile.files[0];
+      framePreview.innerHTML = '';
+      if(!f) { framePreview.innerHTML = '<div class="muted small">No frame uploaded yet</div>'; return }
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(f);
+      img.onload = ()=> URL.revokeObjectURL(img.src);
+      framePreview.appendChild(img);
+
+      // Convert frame to Base64 for link generation
+      const reader = new FileReader();
+      reader.onload = ()=> frameBase64 = reader.result;
+      reader.readAsDataURL(f);
+    });
+
+    // Create campaign link (client-only)
+    createBtn.addEventListener('click', ()=>{
+      const name = document.getElementById('campaignName').value.trim();
+      if(!name) { alert('Enter campaign name'); return }
+      if(!frameBase64) { alert('Upload a PNG frame first'); return }
+
+      // Encode name and frame in Base64 JSON string
+      const data = { name, frame: frameBase64 };
+      const encoded = btoa(JSON.stringify(data));
+      const link = `${window.location.origin}${window.location.pathname}?campaign=${encoded}`;
+
+      campaignLinkInput.value = link;
+      campaignLinkBox.style.display = 'block';
+    });
+
+    // Copy link button
+    copyLinkBtn.addEventListener('click', ()=>{
+      campaignLinkInput.select();
+      document.execCommand('copy');
+      copyLinkBtn.textContent = 'Copied!';
+      setTimeout(()=> copyLinkBtn.textContent = 'Copy Link', 1500);
+    });
+
+    // Download demo (optional)
+    document.getElementById('downloadDemo').addEventListener('click', ()=>{
+      const imgEl = framePreview.querySelector('img');
+      if(!imgEl){ alert('No frame to download'); return }
+      const a = document.createElement('a');
+      a.href = imgEl.src; a.download = 'frame.png'; document.body.appendChild(a); a.click(); a.remove();
+    });
+
+    // Auto-load campaign from URL if present
+    const params = new URLSearchParams(window.location.search);
+    const campData = params.get('campaign');
+    if(campData){
+      try{
+        const decoded = JSON.parse(atob(campData));
+        document.querySelector('h2').textContent = decoded.name;
+        document.getElementById('createCampaignForm').style.display = 'none';
+
+        // Show upload for user photo
+        const userUpload = document.createElement('input');
+        userUpload.type = 'file';
+        userUpload.accept = 'image/*';
+        userUpload.style.marginTop = '10px';
+        userUpload.addEventListener('change', ()=>{
+          const file = userUpload.files[0];
+          if(!file) return;
+
+          const reader = new FileReader();
+          reader.onload = ()=>{
+            const userImg = new Image();
+            userImg.src = reader.result;
+            userImg.onload = ()=>{
+              const frameImg = new Image();
+              frameImg.src = decoded.frame;
+              frameImg.onload = ()=>{
+                const canvas = document.createElement('canvas');
+                const size = 1080;
+                canvas.width = size; canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(userImg, 0, 0, size, size);
+                ctx.drawImage(frameImg, 0, 0, size, size);
+                const merged = canvas.toDataURL('image/jpeg', 0.9);
+
+                const result = document.createElement('img');
+                result.src = merged;
+                result.style.width = '100%';
+                result.style.marginTop = '10px';
+                framePreview.innerHTML = '';
+                framePreview.appendChild(result);
+
+                const dlBtn = document.createElement('button');
+                dlBtn.textContent = 'Download Merged JPG';
+                dlBtn.style.marginTop = '10px';
+                dlBtn.onclick = ()=>{
+                  const a = document.createElement('a');
+                  a.href = merged; a.download = 'framistan.jpg';
+                  document.body.appendChild(a); a.click(); a.remove();
+                };
+                framePreview.appendChild(dlBtn);
+              }
+            }
+          }
+          reader.readAsDataURL(file);
+        });
+        framePreview.innerHTML = `<img src="${decoded.frame}" style="max-width:100%;max-height:100%;object-fit:contain" />`;
+        framePreview.appendChild(userUpload);
+      }catch(e){console.error(e)}
+    }
+  </script>
+</body>
+</html>

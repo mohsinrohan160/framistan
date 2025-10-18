@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Framistan Campaign</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <style>
+    body{background:#0f172a;color:#e6eef8;font-family:Inter,sans-serif;padding:20px;text-align:center;}
+    h1{margin-bottom:10px;}
+    #frameContainer{width:360px;height:360px;margin:20px auto;background:#0b1220;position:relative;overflow:hidden;border-radius:12px;}
+    #frameContainer img,#userImage{position:absolute;top:0;left:0;cursor:move;max-width:100%;max-height:100%;}
+    button{padding:10px 14px;margin-top:10px;border-radius:8px;border:none;background:#06b6d4;color:#012;font-weight:bold;cursor:pointer;}
+  </style>
+</head>
+<body>
+  <h1 id="campaignTitle">Loading...</h1>
+  <div id="frameContainer">
+    <!-- Frame and user photo will appear here -->
+  </div>
+  <button id="addPhotoBtn">Add Your Photo</button>
+  <button id="doneBtn" style="display:none;">Done</button>
+  <button id="downloadBtn" style="display:none;">Download Merged Photo</button>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+    import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBaAacwOXs_AUGv_P-D0h_aBMbkiocD-qc",
+      authDomain: "framistan-pk.firebaseapp.com",
+      databaseURL: "https://framistan-pk-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "framistan-pk",
+      storageBucket: "framistan-pk.firebasestorage.app",
+      messagingSenderId: "704624973815",
+      appId: "1:704624973815:web:bbf6616108e5ed6ca940f2"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const params = new URLSearchParams(window.location.search);
+    const campaignId = params.get('id');
+    const titleEl = document.getElementById('campaignTitle');
+    const frameContainer = document.getElementById('frameContainer');
+    const addPhotoBtn = document.getElementById('addPhotoBtn');
+    const doneBtn = document.getElementById('doneBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    let frameImg,userImg;
+
+    // Load campaign from Firebase
+    get(child(ref(db),'campaigns/'+campaignId))
+      .then(snapshot=>{
+        if(snapshot.exists()){
+          const data=snapshot.val();
+          titleEl.textContent=data.name;
+
+          // Add frame image
+          frameImg=new Image();
+          frameImg.src=data.frame;
+          frameImg.style.width='100%'; frameImg.style.height='100%'; frameImg.style.top='0'; frameImg.style.left='0';
+          frameContainer.appendChild(frameImg);
+        } else { alert('Campaign not found'); titleEl.textContent='Campaign Not Found'; }
+      }).catch(err=>console.error(err));
+
+    // Add photo button
+    addPhotoBtn.addEventListener('click', ()=>{
+      const input=document.createElement('input');
+      input.type='file';
+      input.accept='image/*';
+      input.onchange=e=>{
+        const file=e.target.files[0];
+        if(!file) return;
+        const reader=new FileReader();
+        reader.onload=()=>{
+          if(userImg) frameContainer.removeChild(userImg);
+          userImg=new Image();
+          userImg.src=reader.result;
+          userImg.id='userImage';
+          userImg.style.width='100%'; userImg.style.height='100%'; userImg.style.top='0'; userImg.style.left='0';
+          frameContainer.appendChild(userImg);
+          doneBtn.style.display='inline-block';
+          addPhotoBtn.style.display='none';
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+    });
+
+    // Interact.js for drag & resize
+    import('https://cdn.jsdelivr.net/npm/@interactjs/interactjs/index.min.js').then(interact=>{
+      window.interact=interact.default;
+      interact('#userImage').draggable({
+        modifiers:[
+          interact.modifiers.restrictRect({ restriction: 'parent', endOnly:true })
+        ],
+        listeners:{
+          move(event){
+            const target=event.target;
+            const x=(parseFloat(target.getAttribute('data-x'))||0)+event.dx;
+            const y=(parseFloat(target.getAttribute('data-y'))||0)+event.dy;
+            target.style.transform=`translate(${x}px,${y}px)`;
+            target.setAttribute('data-x',x); target.setAttribute('data-y',y);
+          }
+        }
+      }).resizable({
+        edges:{left:true,right:true,bottom:true,top:true},
+        modifiers:[
+          interact.modifiers.restrictEdges({ outer: 'parent', endOnly:true }),
+          interact.modifiers.restrictSize({ min:{width:50,height:50}, max:{width:1080,height:1080} })
+        ],
+        listeners:{
+          move(event){
+            const target=event.target;
+            let x=parseFloat(target.getAttribute('data-x'))||0;
+            let y=parseFloat(target.getAttribute('data-y'))||0;
+            target.style.width=event.rect.width+'px';
+            target.style.height=event.rect.height+'px';
+            x+=event.deltaRect.left; y+=event.deltaRect.top;
+            target.style.transform=`translate(${x}px,${y}px)`;
+            target.setAttribute('data-x',x); target.setAttribute('data-y',y);
+          }
+        }
+      });
+    });
+
+    // Done button → merge
+    doneBtn.addEventListener('click',()=>{
+      const canvas=document.createElement('canvas');
+      const size=1080;
+      canvas.width=size; canvas.height=size;
+      const ctx=canvas.getContext('2d');
+
+      if(userImg){
+        const rect=userImg.getBoundingClientRect();
+        const parentRect=frameContainer.getBoundingClientRect();
+        const dx=(rect.left-parentRect.left);
+        const dy=(rect.top-parentRect.top);
+        const dw=rect.width; const dh=rect.height;
+        ctx.drawImage(userImg,dx*(size/parentRect.width),dy*(size/parentRect.height),dw*(size/parentRect.width),dh*(size/parentRect.height));
+      }
+      ctx.drawImage(frameImg,0,0,size,size);
+
+      const mergedData=canvas.toDataURL('image/jpeg',0.9);
+
+      const mergedImg=new Image();
+      mergedImg.src=mergedData;
+      mergedImg.style.width='360px'; mergedImg.style.height='360px';
+      frameContainer.innerHTML=''; frameContainer.appendChild(mergedImg);
+
+      doneBtn.style.display='none';
+      downloadBtn.style.display='inline-block';
+
+      downloadBtn.onclick=()=>{
+        const a=document.createElement('a');
+        a.href=mergedData; a.download='framistan.jpg'; document.body.appendChild(a); a.click(); a.remove();
+      };
+    });
+  </script>
+</body>
+</html>

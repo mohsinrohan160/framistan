@@ -9,10 +9,8 @@
   .container {max-width:600px; width:100%;}
   h1 {font-size:20px; margin-bottom:12px;}
   .frame-container {position:relative; width:100%; padding-top:100%; background:#0b1220; overflow:hidden; border-radius:12px;}
-  .frame-container img, .frame-container canvas {position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain;}
-  #userImage {cursor:move; touch-action:none; z-index:1;}
-  #frameImage {z-index:2;}
-  .controls {margin-top:12px; display:flex; gap:8px;}
+  canvas, #frameImage {position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain;}
+  .controls {margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;}
   button {padding:10px 14px; border:none; border-radius:10px; background:#06b6d4; color:#012; cursor:pointer; font-weight:600;}
 </style>
 </head>
@@ -21,11 +19,13 @@
   <h1 id="campaignTitle">Campaign</h1>
   <div class="frame-container" id="frameContainer">
     <img id="frameImage" src="" alt="Frame">
+    <canvas id="userCanvas"></canvas>
   </div>
 
   <div class="controls">
     <input type="file" id="uploadPhoto" accept="image/*">
-    <button id="mergeBtn">Merge & Download</button>
+    <button id="doneBtn" style="display:none;">Done</button>
+    <button id="downloadBtn" style="display:none;">Download Merged Photo</button>
   </div>
 </div>
 
@@ -53,9 +53,16 @@ const frameImage = document.getElementById('frameImage');
 const frameContainer = document.getElementById('frameContainer');
 const campaignTitle = document.getElementById('campaignTitle');
 const uploadPhoto = document.getElementById('uploadPhoto');
-const mergeBtn = document.getElementById('mergeBtn');
+const doneBtn = document.getElementById('doneBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const canvas = document.getElementById('userCanvas');
+const ctx = canvas.getContext('2d');
 
-let userImg = null, userImgData = null;
+canvas.width = frameContainer.offsetWidth;
+canvas.height = frameContainer.offsetHeight;
+
+let userImg = new Image();
+let userState = { x:0, y:0, scale:1 };
 
 // Load campaign from Firebase
 if(slug){
@@ -69,99 +76,84 @@ if(slug){
   }).catch(err=>console.error(err));
 }
 
-// Make uploaded image draggable & resizable
-function makeDraggable(el){
-  interact(el)
-    .draggable({
-      inertia: true,
-      modifiers: [ interact.modifiers.restrictRect({restriction: frameContainer}) ],
-      listeners: { move: dragMoveListener }
-    })
-    .resizable({
-      edges: { left:true, right:true, bottom:true, top:true },
-      inertia:true,
-      preserveAspectRatio: true,
-      modifiers:[ interact.modifiers.restrictEdges({outer: frameContainer}) ],
-      listeners:{ move: resizeMoveListener }
-    });
-}
-
-function dragMoveListener(event){
-  const target = event.target;
-  const x = (parseFloat(target.getAttribute('data-x'))||0) + event.dx;
-  const y = (parseFloat(target.getAttribute('data-y'))||0) + event.dy;
-  const scale = parseFloat(target.getAttribute('data-scale')||1);
-  target.style.transform = `translate(${x}px,${y}px) scale(${scale})`;
-  target.setAttribute('data-x', x);
-  target.setAttribute('data-y', y);
-}
-
-function resizeMoveListener(event){
-  const target = event.target;
-  const dx = event.deltaRect.width / target.offsetWidth;
-  let scale = parseFloat(target.getAttribute('data-scale')||1);
-  scale += dx;
-  const x = parseFloat(target.getAttribute('data-x')||0);
-  const y = parseFloat(target.getAttribute('data-y')||0);
-  target.style.transform = `translate(${x}px,${y}px) scale(${scale})`;
-  target.setAttribute('data-scale', scale);
-}
-
 // Handle photo upload
 uploadPhoto.addEventListener('change', ()=>{
   const file = uploadPhoto.files[0];
   if(!file) return;
   const reader = new FileReader();
   reader.onload = ()=>{
-    if(userImg){ userImg.remove(); userImg=null; }
-    userImgData = reader.result;
-    userImg = document.createElement('img');
-    userImg.src = userImgData;
-    userImg.id = 'userImage';
-    userImg.style.position='absolute';
-    userImg.style.top='0';
-    userImg.style.left='0';
-    userImg.style.width='100%';
-    userImg.style.height='100%';
-    userImg.style.objectFit='contain';
-    userImg.setAttribute('data-x',0);
-    userImg.setAttribute('data-y',0);
-    userImg.setAttribute('data-scale',1);
-    userImg.style.zIndex = 1; // behind frame
-    frameContainer.appendChild(userImg);
-    makeDraggable(userImg);
+    userImg.src = reader.result;
+    userImg.onload = ()=>{
+      drawUser();
+      doneBtn.style.display='inline-block';
+      downloadBtn.style.display='none';
+      initInteract();
+    }
   }
   reader.readAsDataURL(file);
 });
 
-// Merge & Download
-mergeBtn.addEventListener('click', ()=>{
-  if(!userImgData){ alert('Upload your photo first'); return; }
-  const canvas = document.createElement('canvas');
-  const size = frameContainer.offsetWidth;
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
+// Draw user image on canvas according to state
+function drawUser(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const w = canvas.width * userState.scale;
+  const h = canvas.height * userState.scale;
+  const x = userState.x;
+  const y = userState.y;
+  ctx.drawImage(userImg, x, y, w, h);
+}
 
-  const img = new Image();
-  img.src = userImgData;
-  img.onload = ()=>{
-    const x = parseFloat(userImg.getAttribute('data-x'))||0;
-    const y = parseFloat(userImg.getAttribute('data-y'))||0;
-    const scale = parseFloat(userImg.getAttribute('data-scale'))||1;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(scale, scale);
-    ctx.drawImage(img, 0, 0, size, size);
-    ctx.restore();
+// Interact.js for drag & resize
+function initInteract(){
+  interact(canvas)
+    .draggable({
+      listeners: {
+        move(event){
+          userState.x += event.dx;
+          userState.y += event.dy;
+          drawUser();
+        }
+      }
+    })
+    .gesturable({
+      listeners:{
+        move(event){
+          userState.scale *= (1 + event.ds);
+          drawUser();
+        }
+      }
+    });
+}
 
-    const frameImgEl = new Image();
-    frameImgEl.src = frameImage.src;
-    frameImgEl.onload = ()=>{
-      ctx.drawImage(frameImgEl,0,0,size,size);
-      const merged = canvas.toDataURL('image/jpeg',0.95);
+// Done button merges user image and shows result
+doneBtn.addEventListener('click', ()=>{
+  const mergedCanvas = document.createElement('canvas');
+  mergedCanvas.width = canvas.width;
+  mergedCanvas.height = canvas.height;
+  const mCtx = mergedCanvas.getContext('2d');
+
+  // Draw user adjusted photo
+  mCtx.drawImage(userImg, userState.x, userState.y, canvas.width*userState.scale, canvas.height*userState.scale);
+
+  // Draw frame on top
+  const frameCopy = new Image();
+  frameCopy.src = frameImage.src;
+  frameCopy.onload = ()=>{
+    mCtx.drawImage(frameCopy,0,0,canvas.width,canvas.height);
+    // Show merged result
+    canvas.style.display='none';
+    frameImage.style.display='none';
+
+    const resultImg = document.createElement('img');
+    resultImg.src = mergedCanvas.toDataURL('image/jpeg',0.95);
+    resultImg.style.width='100%';
+    frameContainer.appendChild(resultImg);
+
+    downloadBtn.style.display='inline-block';
+    downloadBtn.onclick = ()=>{
       const a = document.createElement('a');
-      a.href = merged; a.download = 'framistan.jpg';
+      a.href = resultImg.src;
+      a.download='framistan.jpg';
       a.click();
     }
   }

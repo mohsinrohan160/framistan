@@ -10,7 +10,8 @@
   h1 {font-size:20px; margin-bottom:12px;}
   .frame-container {position:relative; width:100%; padding-top:100%; background:#0b1220; overflow:hidden; border-radius:12px;}
   .frame-container img, .frame-container canvas {position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain;}
-  #userImage {cursor:move; touch-action:none;}
+  #userImage {cursor:move; touch-action:none; z-index:1;}
+  #frameImage {z-index:2;}
   .controls {margin-top:12px; display:flex; gap:8px;}
   button {padding:10px 14px; border:none; border-radius:10px; background:#06b6d4; color:#012; cursor:pointer; font-weight:600;}
 </style>
@@ -25,13 +26,13 @@
   <div class="controls">
     <input type="file" id="uploadPhoto" accept="image/*">
     <button id="mergeBtn">Merge & Download</button>
-    <button id="resetBtn">Create New Photo</button>
   </div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
+import interact from "https://cdn.jsdelivr.net/npm/@interactjs/interactjs/index.min.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBaAacwOXs_AUGv_P-D0h_aBMbkiocD-qc",
@@ -53,7 +54,6 @@ const frameContainer = document.getElementById('frameContainer');
 const campaignTitle = document.getElementById('campaignTitle');
 const uploadPhoto = document.getElementById('uploadPhoto');
 const mergeBtn = document.getElementById('mergeBtn');
-const resetBtn = document.getElementById('resetBtn');
 
 let userImg = null, userImgData = null;
 
@@ -69,66 +69,65 @@ if(slug){
   }).catch(err=>console.error(err));
 }
 
-// Interact.js
-import interact from "https://cdn.jsdelivr.net/npm/@interactjs/interactjs/index.min.js";
-
-// Create draggable & resizable image
+// Make uploaded image draggable & resizable
 function makeDraggable(el){
   interact(el)
     .draggable({
       inertia: true,
-      modifiers: [
-        interact.modifiers.restrictRect({restriction: frameContainer})
-      ],
-      listeners: {move: dragMoveListener}
+      modifiers: [ interact.modifiers.restrictRect({restriction: frameContainer}) ],
+      listeners: { move: dragMoveListener }
     })
     .resizable({
       edges: { left:true, right:true, bottom:true, top:true },
       inertia:true,
-      modifiers:[
-        interact.modifiers.restrictEdges({outer: frameContainer})
-      ],
-      listeners:{move: resizeMoveListener}
+      preserveAspectRatio: true,
+      modifiers:[ interact.modifiers.restrictEdges({outer: frameContainer}) ],
+      listeners:{ move: resizeMoveListener }
     });
 }
 
 function dragMoveListener(event){
   const target = event.target;
-  const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
-  const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
-  target.style.transform = `translate(${x}px,${y}px) scale(${target.getAttribute('data-scale')||1})`;
+  const x = (parseFloat(target.getAttribute('data-x'))||0) + event.dx;
+  const y = (parseFloat(target.getAttribute('data-y'))||0) + event.dy;
+  const scale = parseFloat(target.getAttribute('data-scale')||1);
+  target.style.transform = `translate(${x}px,${y}px) scale(${scale})`;
   target.setAttribute('data-x', x);
   target.setAttribute('data-y', y);
 }
 
 function resizeMoveListener(event){
   const target = event.target;
-  let scale = (parseFloat(target.getAttribute('data-scale')) || 1);
   const dx = event.deltaRect.width / target.offsetWidth;
-  scale = scale + dx;
-  target.style.transform = `translate(${target.getAttribute('data-x')||0}px,${target.getAttribute('data-y')||0}px) scale(${scale})`;
+  let scale = parseFloat(target.getAttribute('data-scale')||1);
+  scale += dx;
+  const x = parseFloat(target.getAttribute('data-x')||0);
+  const y = parseFloat(target.getAttribute('data-y')||0);
+  target.style.transform = `translate(${x}px,${y}px) scale(${scale})`;
   target.setAttribute('data-scale', scale);
 }
 
-// Handle upload
+// Handle photo upload
 uploadPhoto.addEventListener('change', ()=>{
   const file = uploadPhoto.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = ()=> {
-    if(userImg){ userImg.remove(); userImg = null; }
+  reader.onload = ()=>{
+    if(userImg){ userImg.remove(); userImg=null; }
     userImgData = reader.result;
     userImg = document.createElement('img');
     userImg.src = userImgData;
     userImg.id = 'userImage';
     userImg.style.position='absolute';
-    userImg.style.top='0'; userImg.style.left='0';
+    userImg.style.top='0';
+    userImg.style.left='0';
     userImg.style.width='100%';
     userImg.style.height='100%';
     userImg.style.objectFit='contain';
     userImg.setAttribute('data-x',0);
     userImg.setAttribute('data-y',0);
     userImg.setAttribute('data-scale',1);
+    userImg.style.zIndex = 1; // behind frame
     frameContainer.appendChild(userImg);
     makeDraggable(userImg);
   }
@@ -140,10 +139,10 @@ mergeBtn.addEventListener('click', ()=>{
   if(!userImgData){ alert('Upload your photo first'); return; }
   const canvas = document.createElement('canvas');
   const size = frameContainer.offsetWidth;
-  canvas.width = size; canvas.height = size;
+  canvas.width = size;
+  canvas.height = size;
   const ctx = canvas.getContext('2d');
 
-  // Draw user image
   const img = new Image();
   img.src = userImgData;
   img.onload = ()=>{
@@ -156,7 +155,6 @@ mergeBtn.addEventListener('click', ()=>{
     ctx.drawImage(img, 0, 0, size, size);
     ctx.restore();
 
-    // Draw frame
     const frameImgEl = new Image();
     frameImgEl.src = frameImage.src;
     frameImgEl.onload = ()=>{
@@ -167,12 +165,6 @@ mergeBtn.addEventListener('click', ()=>{
       a.click();
     }
   }
-});
-
-// Reset
-resetBtn.addEventListener('click', ()=>{
-  if(userImg){ userImg.remove(); userImg = null; }
-  uploadPhoto.value='';
 });
 </script>
 </body>

@@ -5,28 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Framistan — Campaign</title>
 <style>
-  body {margin:0; font-family:Inter, sans-serif; background:#0f172a; color:#e6eef8; display:flex; justify-content:center; padding:20px;}
-  .container {max-width:600px; width:100%;}
-  h1 {font-size:20px; margin-bottom:12px;}
-  .frame-container {position:relative; width:100%; padding-top:100%; background:#0b1220; overflow:hidden; border-radius:12px;}
-  canvas, #frameImage {position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain;}
-  .controls {margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;}
-  button {padding:10px 14px; border:none; border-radius:10px; background:#06b6d4; color:#012; cursor:pointer; font-weight:600;}
+  body {margin:0; font-family:Inter, sans-serif; background:#0f172a; color:#e6eef8; display:flex; justify-content:center; padding:20px;}
+  .container {max-width:600px; width:100%;}
+  h1 {font-size:20px; margin-bottom:12px;}
+  .frame-container {position:relative; width:100%; padding-top:100%; background:#0b1220; overflow:hidden; border-radius:12px;}
+  canvas, #frameImage, #resultImg {position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; pointer-events:none;} /* Frame and result image shouldn't block interaction */
+  #userCanvas {pointer-events:all;} /* Only the canvas for user manipulation should be interactive */
+  .controls {margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+  button {padding:10px 14px; border:none; border-radius:10px; background:#06b6d4; color:#012; cursor:pointer; font-weight:600;}
+  #uploadPhoto {display:none;} /* Hidden by default, triggered by 'Add your photo' button */
 </style>
 </head>
 <body>
 <div class="container">
-  <h1 id="campaignTitle">Campaign</h1>
-  <div class="frame-container" id="frameContainer">
-    <img id="frameImage" src="" alt="Frame">
-    <canvas id="userCanvas"></canvas>
-  </div>
+  <h1 id="campaignTitle">Campaign</h1>
+  <div class="frame-container" id="frameContainer">
+        <img id="frameImage" src="" alt="Frame">
+        <canvas id="userCanvas"></canvas>
+      </div>
 
-  <div class="controls">
-    <input type="file" id="uploadPhoto" accept="image/*">
-    <button id="doneBtn" style="display:none;">Done</button>
-    <button id="downloadBtn" style="display:none;">Download Merged Photo</button>
-  </div>
+  <div class="controls">
+        <input type="file" id="uploadPhoto" accept="image/jpeg,image/png">
+        <button id="addPhotoBtn">Add your photo</button>
+    <button id="doneBtn" style="display:none;">Done</button>
+    <button id="downloadBtn" style="display:none;">Download</button>
+  </div>
 </div>
 
 <script type="module">
@@ -35,13 +38,13 @@ import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs
 import interact from "https://cdn.jsdelivr.net/npm/@interactjs/interactjs/index.min.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBaAacwOXs_AUGv_P-D0h_aBMbkiocD-qc",
-  authDomain: "framistan-pk.firebaseapp.com",
-  databaseURL: "https://framistan-pk-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "framistan-pk",
-  storageBucket: "framistan-pk.firebasestorage.app",
-  messagingSenderId: "704624973815",
-  appId: "1:704624973815:web:bbf6616108e5ed6ca940f2"
+  apiKey: "AIzaSyBaAacwOXs_AUGv_P-D0h_aBMbkiocD-qc",
+  authDomain: "framistan-pk.firebaseapp.com",
+  databaseURL: "https://framistan-pk-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "framistan-pk",
+  storageBucket: "framistan-pk.firebasestorage.app",
+  messagingSenderId: "704624973815",
+  appId: "1:704624973815:web:bbf6616108e5ed6ca940f2"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -53,111 +56,192 @@ const frameImage = document.getElementById('frameImage');
 const frameContainer = document.getElementById('frameContainer');
 const campaignTitle = document.getElementById('campaignTitle');
 const uploadPhoto = document.getElementById('uploadPhoto');
+const addPhotoBtn = document.getElementById('addPhotoBtn');
 const doneBtn = document.getElementById('doneBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const canvas = document.getElementById('userCanvas');
 const ctx = canvas.getContext('2d');
 
+// Canvas setup
 canvas.width = frameContainer.offsetWidth;
 canvas.height = frameContainer.offsetHeight;
 
 let userImg = new Image();
-let userState = { x:0, y:0, scale:1 };
+let userState = { x: 0, y: 0, scale: 1, initialWidth: 0, initialHeight: 0 };
+let currentResultImg = null;
+
+// Helper to remove any existing result image
+function clearResult() {
+  if (currentResultImg) {
+    currentResultImg.remove();
+    currentResultImg = null;
+  }
+  canvas.style.display = 'block';
+  frameImage.style.display = 'block';
+}
 
 // Load campaign from Firebase
 if(slug){
-  const dbRef = ref(db);
-  get(child(dbRef, 'campaigns/' + slug)).then(snapshot=>{
-    if(snapshot.exists()){
-      const data = snapshot.val();
-      campaignTitle.textContent = data.name;
-      frameImage.src = data.frame;
-    } else { alert('Campaign not found'); }
-  }).catch(err=>console.error(err));
+  const dbRef = ref(db);
+  get(child(dbRef, 'campaigns/' + slug)).then(snapshot=>{
+    if(snapshot.exists()){
+      const data = snapshot.val();
+      campaignTitle.textContent = data.name;
+      frameImage.src = data.frame;
+    } else { alert('Campaign not found'); }
+  }).catch(err=>console.error(err));
 }
+
+// Trigger hidden file input
+addPhotoBtn.addEventListener('click', () => {
+  uploadPhoto.click();
+});
 
 // Handle photo upload
 uploadPhoto.addEventListener('change', ()=>{
-  const file = uploadPhoto.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    userImg.src = reader.result;
-    userImg.onload = ()=>{
-      drawUser();
-      doneBtn.style.display='inline-block';
-      downloadBtn.style.display='none';
-      initInteract();
-    }
-  }
-  reader.readAsDataURL(file);
+  const file = uploadPhoto.files[0];
+  if(!file) return;
+  clearResult(); // Start fresh
+
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    userImg.src = reader.result;
+    userImg.onload = ()=>{
+      // Calculate initial state to fit image while maintaining aspect ratio
+      const imgRatio = userImg.width / userImg.height;
+      const canvasRatio = canvas.width / canvas.height;
+
+      let drawWidth, drawHeight;
+
+      if (imgRatio > canvasRatio) { // Image is wider than canvas
+        drawWidth = canvas.width;
+        drawHeight = drawWidth / imgRatio;
+      } else { // Image is taller than canvas
+        drawHeight = canvas.height;
+        drawWidth = drawHeight * imgRatio;
+      }
+
+      // Store initial dimensions and set initial position (centered)
+      userState.initialWidth = drawWidth;
+      userState.initialHeight = drawHeight;
+      userState.x = (canvas.width - drawWidth) / 2;
+      userState.y = (canvas.height - drawHeight) / 2;
+      userState.scale = 1; // Scale is relative to initial fit dimensions
+
+      drawUser();
+      
+      // Update controls
+      addPhotoBtn.style.display = 'none';
+      doneBtn.style.display = 'inline-block';
+      downloadBtn.style.display = 'none';
+      
+      initInteract();
+    }
+  }
+  reader.readAsDataURL(file);
 });
 
-// Draw user image on canvas according to state
+// Draw user image on canvas according to state (maintaining aspect ratio)
 function drawUser(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  const w = canvas.width * userState.scale;
-  const h = canvas.height * userState.scale;
-  const x = userState.x;
-  const y = userState.y;
-  ctx.drawImage(userImg, x, y, w, h);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  
+  const w = userState.initialWidth * userState.scale;
+  const h = userState.initialHeight * userState.scale;
+  const x = userState.x;
+  const y = userState.y;
+  
+  // Draw the user image
+  ctx.drawImage(userImg, x, y, w, h);
 }
 
 // Interact.js for drag & resize
 function initInteract(){
-  interact(canvas)
-    .draggable({
-      listeners: {
-        move(event){
-          userState.x += event.dx;
-          userState.y += event.dy;
-          drawUser();
-        }
-      }
-    })
-    .gesturable({
-      listeners:{
-        move(event){
-          userState.scale *= (1 + event.ds);
-          drawUser();
-        }
-      }
-    });
+  // Make sure we only initialize once
+  if (interact.isSet(canvas)) return; 
+  
+  interact(canvas)
+    .draggable({
+      listeners: {
+        move(event){
+          userState.x += event.dx;
+          userState.y += event.dy;
+          drawUser();
+        }
+      }
+    })
+    .gesturable({
+      listeners:{
+        move(event){
+          // Update scale factor
+          userState.scale *= (1 + event.ds);
+          // Prevent scale from going to zero
+          userState.scale = Math.max(0.1, userState.scale); 
+                  
+          drawUser();
+        }
+      }
+    });
 }
 
 // Done button merges user image and shows result
 doneBtn.addEventListener('click', ()=>{
-  const mergedCanvas = document.createElement('canvas');
-  mergedCanvas.width = canvas.width;
-  mergedCanvas.height = canvas.height;
-  const mCtx = mergedCanvas.getContext('2d');
+  if (!userImg.src) return;
 
-  // Draw user adjusted photo
-  mCtx.drawImage(userImg, userState.x, userState.y, canvas.width*userState.scale, canvas.height*userState.scale);
+  // 1. Create a new canvas for merging
+  const mergedCanvas = document.createElement('canvas');
+  mergedCanvas.width = canvas.width;
+  mergedCanvas.height = canvas.height;
+  const mCtx = mergedCanvas.getContext('2d');
 
-  // Draw frame on top
-  const frameCopy = new Image();
-  frameCopy.src = frameImage.src;
-  frameCopy.onload = ()=>{
-    mCtx.drawImage(frameCopy,0,0,canvas.width,canvas.height);
-    // Show merged result
-    canvas.style.display='none';
-    frameImage.style.display='none';
+  // The final dimensions for drawing the user's image
+  const drawW = userState.initialWidth * userState.scale;
+  const drawH = userState.initialHeight * userState.scale;
+  
+  // 2. Draw **User Adjusted Photo (Background)**
+  mCtx.drawImage(userImg, userState.x, userState.y, drawW, drawH);
 
-    const resultImg = document.createElement('img');
-    resultImg.src = mergedCanvas.toDataURL('image/jpeg',0.95);
-    resultImg.style.width='100%';
-    frameContainer.appendChild(resultImg);
+  // 3. Draw **Frame on top (Foreground)**
+  const frameCopy = new Image();
+  frameCopy.src = frameImage.src;
+  frameCopy.onload = ()=>{
+    // Draw the frame on top of the user image
+    mCtx.drawImage(frameCopy, 0, 0, canvas.width, canvas.height);
+    
+    // 4. Show merged result
+    // Hide interactive elements
+    canvas.style.display = 'none';
+    frameImage.style.display = 'none'; // The frame is now baked into the result
 
-    downloadBtn.style.display='inline-block';
-    downloadBtn.onclick = ()=>{
-      const a = document.createElement('a');
-      a.href = resultImg.src;
-      a.download='framistan.jpg';
-      a.click();
-    }
-  }
+    // Remove any previous result image if 'Done' is clicked again
+    clearResult(); 
+
+    const resultImg = document.createElement('img');
+    resultImg.id = 'resultImg';
+    resultImg.src = mergedCanvas.toDataURL('image/jpeg', 0.95);
+    frameContainer.appendChild(resultImg);
+    currentResultImg = resultImg;
+
+    // 5. Update controls for Download
+    doneBtn.style.display = 'none';
+    addPhotoBtn.style.display = 'inline-block'; // Allow adding a new photo
+    downloadBtn.style.display = 'inline-block';
+  }
 });
+
+// Download button logic
+downloadBtn.addEventListener('click', ()=>{
+  if(currentResultImg){
+    const a = document.createElement('a');
+    a.href = currentResultImg.src;
+    a.download='framistan-merged.jpg';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+});
+
+// Initialize result clearing when the page loads, in case a new photo is uploaded before 'Done'
+addPhotoBtn.addEventListener('click', clearResult);
 </script>
 </body>
 </html>

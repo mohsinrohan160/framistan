@@ -1,163 +1,179 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Framistan Campaign</title>
-  <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <style>
-    body{background:#0f172a;color:#e6eef8;font-family:Inter,sans-serif;padding:20px;text-align:center;}
-    h1{margin-bottom:10px;}
-    #frameContainer{width:360px;height:360px;margin:20px auto;background:#0b1220;position:relative;overflow:hidden;border-radius:12px;}
-    #frameContainer img,#userImage{position:absolute;top:0;left:0;cursor:move;max-width:100%;max-height:100%;}
-    button{padding:10px 14px;margin-top:10px;border-radius:8px;border:none;background:#06b6d4;color:#012;font-weight:bold;cursor:pointer;}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Framistan — Campaign</title>
+<style>
+  body {margin:0; font-family:Inter, sans-serif; background:#0f172a; color:#e6eef8; display:flex; justify-content:center; padding:20px;}
+  .container {max-width:600px; width:100%;}
+  h1 {font-size:20px; margin-bottom:12px;}
+  .frame-container {position:relative; width:100%; padding-top:100%; background:#0b1220; overflow:hidden; border-radius:12px;}
+  .frame-container img, .frame-container canvas {position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain;}
+  #userImage {cursor:move; touch-action:none;}
+  .controls {margin-top:12px; display:flex; gap:8px;}
+  button {padding:10px 14px; border:none; border-radius:10px; background:#06b6d4; color:#012; cursor:pointer; font-weight:600;}
+</style>
 </head>
 <body>
-  <h1 id="campaignTitle">Loading...</h1>
-  <div id="frameContainer">
-    <!-- Frame and user photo will appear here -->
+<div class="container">
+  <h1 id="campaignTitle">Campaign</h1>
+  <div class="frame-container" id="frameContainer">
+    <img id="frameImage" src="" alt="Frame">
   </div>
-  <button id="addPhotoBtn">Add Your Photo</button>
-  <button id="doneBtn" style="display:none;">Done</button>
-  <button id="downloadBtn" style="display:none;">Download Merged Photo</button>
 
-  <!-- Firebase -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-    import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
+  <div class="controls">
+    <input type="file" id="uploadPhoto" accept="image/*">
+    <button id="mergeBtn">Merge & Download</button>
+    <button id="resetBtn">Create New Photo</button>
+  </div>
+</div>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyBaAacwOXs_AUGv_P-D0h_aBMbkiocD-qc",
-      authDomain: "framistan-pk.firebaseapp.com",
-      databaseURL: "https://framistan-pk-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "framistan-pk",
-      storageBucket: "framistan-pk.firebasestorage.app",
-      messagingSenderId: "704624973815",
-      appId: "1:704624973815:web:bbf6616108e5ed6ca940f2"
-    };
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+import { getDatabase, ref, get, child } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+const firebaseConfig = {
+  apiKey: "AIzaSyBaAacwOXs_AUGv_P-D0h_aBMbkiocD-qc",
+  authDomain: "framistan-pk.firebaseapp.com",
+  databaseURL: "https://framistan-pk-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "framistan-pk",
+  storageBucket: "framistan-pk.firebasestorage.app",
+  messagingSenderId: "704624973815",
+  appId: "1:704624973815:web:bbf6616108e5ed6ca940f2"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-    const params = new URLSearchParams(window.location.search);
-    const campaignId = params.get('id');
-    const titleEl = document.getElementById('campaignTitle');
-    const frameContainer = document.getElementById('frameContainer');
-    const addPhotoBtn = document.getElementById('addPhotoBtn');
-    const doneBtn = document.getElementById('doneBtn');
-    const downloadBtn = document.getElementById('downloadBtn');
+const params = new URLSearchParams(window.location.search);
+const slug = params.get('id');
 
-    let frameImg,userImg;
+const frameImage = document.getElementById('frameImage');
+const frameContainer = document.getElementById('frameContainer');
+const campaignTitle = document.getElementById('campaignTitle');
+const uploadPhoto = document.getElementById('uploadPhoto');
+const mergeBtn = document.getElementById('mergeBtn');
+const resetBtn = document.getElementById('resetBtn');
 
-    // Load campaign from Firebase
-    get(child(ref(db),'campaigns/'+campaignId))
-      .then(snapshot=>{
-        if(snapshot.exists()){
-          const data=snapshot.val();
-          titleEl.textContent=data.name;
+let userImg = null, userImgData = null;
 
-          // Add frame image
-          frameImg=new Image();
-          frameImg.src=data.frame;
-          frameImg.style.width='100%'; frameImg.style.height='100%'; frameImg.style.top='0'; frameImg.style.left='0';
-          frameContainer.appendChild(frameImg);
-        } else { alert('Campaign not found'); titleEl.textContent='Campaign Not Found'; }
-      }).catch(err=>console.error(err));
+// Load campaign from Firebase
+if(slug){
+  const dbRef = ref(db);
+  get(child(dbRef, 'campaigns/' + slug)).then(snapshot=>{
+    if(snapshot.exists()){
+      const data = snapshot.val();
+      campaignTitle.textContent = data.name;
+      frameImage.src = data.frame;
+    } else { alert('Campaign not found'); }
+  }).catch(err=>console.error(err));
+}
 
-    // Add photo button
-    addPhotoBtn.addEventListener('click', ()=>{
-      const input=document.createElement('input');
-      input.type='file';
-      input.accept='image/*';
-      input.onchange=e=>{
-        const file=e.target.files[0];
-        if(!file) return;
-        const reader=new FileReader();
-        reader.onload=()=>{
-          if(userImg) frameContainer.removeChild(userImg);
-          userImg=new Image();
-          userImg.src=reader.result;
-          userImg.id='userImage';
-          userImg.style.width='100%'; userImg.style.height='100%'; userImg.style.top='0'; userImg.style.left='0';
-          frameContainer.appendChild(userImg);
-          doneBtn.style.display='inline-block';
-          addPhotoBtn.style.display='none';
-        };
-        reader.readAsDataURL(file);
-      };
-      input.click();
+// Interact.js
+import interact from "https://cdn.jsdelivr.net/npm/@interactjs/interactjs/index.min.js";
+
+// Create draggable & resizable image
+function makeDraggable(el){
+  interact(el)
+    .draggable({
+      inertia: true,
+      modifiers: [
+        interact.modifiers.restrictRect({restriction: frameContainer})
+      ],
+      listeners: {move: dragMoveListener}
+    })
+    .resizable({
+      edges: { left:true, right:true, bottom:true, top:true },
+      inertia:true,
+      modifiers:[
+        interact.modifiers.restrictEdges({outer: frameContainer})
+      ],
+      listeners:{move: resizeMoveListener}
     });
+}
 
-    // Interact.js for drag & resize
-    import('https://cdn.jsdelivr.net/npm/@interactjs/interactjs/index.min.js').then(interact=>{
-      window.interact=interact.default;
-      interact('#userImage').draggable({
-        modifiers:[
-          interact.modifiers.restrictRect({ restriction: 'parent', endOnly:true })
-        ],
-        listeners:{
-          move(event){
-            const target=event.target;
-            const x=(parseFloat(target.getAttribute('data-x'))||0)+event.dx;
-            const y=(parseFloat(target.getAttribute('data-y'))||0)+event.dy;
-            target.style.transform=`translate(${x}px,${y}px)`;
-            target.setAttribute('data-x',x); target.setAttribute('data-y',y);
-          }
-        }
-      }).resizable({
-        edges:{left:true,right:true,bottom:true,top:true},
-        modifiers:[
-          interact.modifiers.restrictEdges({ outer: 'parent', endOnly:true }),
-          interact.modifiers.restrictSize({ min:{width:50,height:50}, max:{width:1080,height:1080} })
-        ],
-        listeners:{
-          move(event){
-            const target=event.target;
-            let x=parseFloat(target.getAttribute('data-x'))||0;
-            let y=parseFloat(target.getAttribute('data-y'))||0;
-            target.style.width=event.rect.width+'px';
-            target.style.height=event.rect.height+'px';
-            x+=event.deltaRect.left; y+=event.deltaRect.top;
-            target.style.transform=`translate(${x}px,${y}px)`;
-            target.setAttribute('data-x',x); target.setAttribute('data-y',y);
-          }
-        }
-      });
-    });
+function dragMoveListener(event){
+  const target = event.target;
+  const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+  const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+  target.style.transform = `translate(${x}px,${y}px) scale(${target.getAttribute('data-scale')||1})`;
+  target.setAttribute('data-x', x);
+  target.setAttribute('data-y', y);
+}
 
-    // Done button → merge
-    doneBtn.addEventListener('click',()=>{
-      const canvas=document.createElement('canvas');
-      const size=1080;
-      canvas.width=size; canvas.height=size;
-      const ctx=canvas.getContext('2d');
+function resizeMoveListener(event){
+  const target = event.target;
+  let scale = (parseFloat(target.getAttribute('data-scale')) || 1);
+  const dx = event.deltaRect.width / target.offsetWidth;
+  scale = scale + dx;
+  target.style.transform = `translate(${target.getAttribute('data-x')||0}px,${target.getAttribute('data-y')||0}px) scale(${scale})`;
+  target.setAttribute('data-scale', scale);
+}
 
-      if(userImg){
-        const rect=userImg.getBoundingClientRect();
-        const parentRect=frameContainer.getBoundingClientRect();
-        const dx=(rect.left-parentRect.left);
-        const dy=(rect.top-parentRect.top);
-        const dw=rect.width; const dh=rect.height;
-        ctx.drawImage(userImg,dx*(size/parentRect.width),dy*(size/parentRect.height),dw*(size/parentRect.width),dh*(size/parentRect.height));
-      }
-      ctx.drawImage(frameImg,0,0,size,size);
+// Handle upload
+uploadPhoto.addEventListener('change', ()=>{
+  const file = uploadPhoto.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=> {
+    if(userImg){ userImg.remove(); userImg = null; }
+    userImgData = reader.result;
+    userImg = document.createElement('img');
+    userImg.src = userImgData;
+    userImg.id = 'userImage';
+    userImg.style.position='absolute';
+    userImg.style.top='0'; userImg.style.left='0';
+    userImg.style.width='100%';
+    userImg.style.height='100%';
+    userImg.style.objectFit='contain';
+    userImg.setAttribute('data-x',0);
+    userImg.setAttribute('data-y',0);
+    userImg.setAttribute('data-scale',1);
+    frameContainer.appendChild(userImg);
+    makeDraggable(userImg);
+  }
+  reader.readAsDataURL(file);
+});
 
-      const mergedData=canvas.toDataURL('image/jpeg',0.9);
+// Merge & Download
+mergeBtn.addEventListener('click', ()=>{
+  if(!userImgData){ alert('Upload your photo first'); return; }
+  const canvas = document.createElement('canvas');
+  const size = frameContainer.offsetWidth;
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
 
-      const mergedImg=new Image();
-      mergedImg.src=mergedData;
-      mergedImg.style.width='360px'; mergedImg.style.height='360px';
-      frameContainer.innerHTML=''; frameContainer.appendChild(mergedImg);
+  // Draw user image
+  const img = new Image();
+  img.src = userImgData;
+  img.onload = ()=>{
+    const x = parseFloat(userImg.getAttribute('data-x'))||0;
+    const y = parseFloat(userImg.getAttribute('data-y'))||0;
+    const scale = parseFloat(userImg.getAttribute('data-scale'))||1;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0, size, size);
+    ctx.restore();
 
-      doneBtn.style.display='none';
-      downloadBtn.style.display='inline-block';
+    // Draw frame
+    const frameImgEl = new Image();
+    frameImgEl.src = frameImage.src;
+    frameImgEl.onload = ()=>{
+      ctx.drawImage(frameImgEl,0,0,size,size);
+      const merged = canvas.toDataURL('image/jpeg',0.95);
+      const a = document.createElement('a');
+      a.href = merged; a.download = 'framistan.jpg';
+      a.click();
+    }
+  }
+});
 
-      downloadBtn.onclick=()=>{
-        const a=document.createElement('a');
-        a.href=mergedData; a.download='framistan.jpg'; document.body.appendChild(a); a.click(); a.remove();
-      };
-    });
-  </script>
+// Reset
+resetBtn.addEventListener('click', ()=>{
+  if(userImg){ userImg.remove(); userImg = null; }
+  uploadPhoto.value='';
+});
+</script>
 </body>
 </html>
